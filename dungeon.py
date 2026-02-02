@@ -2,6 +2,7 @@
 """Cosmo's Dungeon - A terminal roguelike dungeon crawler."""
 
 import curses
+import os
 import random
 import sys
 import time
@@ -325,6 +326,16 @@ class DungeonLevel:
                 self.revealed[y][x] = True
 
 
+def _load_text(name):
+    """Load lines from a text file in the text/ directory."""
+    path = os.path.join(os.path.dirname(__file__), "text", name)
+    try:
+        with open(path) as f:
+            return [line.rstrip("\n") for line in f]
+    except FileNotFoundError:
+        return []
+
+
 class Game:
     MAP_W = 70
     MAP_H = 22
@@ -392,24 +403,14 @@ class Game:
     def _title_screen(self):
         self.scr.clear()
         h, w = self.scr.getmaxyx()
-        title = [
-            "  ___                       _        ",
-            " / __|___ ___ _ __  ___  _( )___     ",
-            "| (__/ _ (_-<| '  \\/ _ \\(_)/(_-<     ",
-            " \\___\\___/__/|_|_|_\\___/   /__/      ",
-            "                                     ",
-            " ___                                  ",
-            "|   \\ _  _ _ _  __ _ ___ ___ _ _      ",
-            "| |) | || | ' \\/ _` / -_) _ \\ ' \\    ",
-            "|___/ \\_,_|_||_\\__, \\___\\___/_||_|   ",
-            "               |___/                  ",
-        ]
-        start_y = max(0, h // 2 - 8)
+        title = _load_text("title.txt") or ["Cosmo's Dungeon"]
+        max_title_w = max((len(l) for l in title), default=0)
+        start_y = max(0, h // 2 - 12)
+        ox = max(0, w // 2 - max_title_w // 2)
         for i, line in enumerate(title):
-            x = max(0, w // 2 - len(line) // 2)
             if start_y + i < h:
                 try:
-                    self.scr.addstr(start_y + i, x, line,
+                    self.scr.addstr(start_y + i, ox, line,
                                     curses.color_pair(C_PLAYER) | curses.A_BOLD)
                 except curses.error:
                     pass
@@ -510,7 +511,7 @@ class Game:
             pass
 
         # ── Status bar ───────────────────────────────────────────────────────
-        bar_y = oy + self.MAP_H + 1
+        bar_y = oy + self.MAP_H
         p = self.player
         hp_bar_len = 15
         hp_filled = max(0, int(hp_bar_len * p.hp / p.max_hp))
@@ -849,30 +850,36 @@ class Game:
         h, w = self.scr.getmaxyx()
         p = self.player
 
-        lines = [
-            "  _____  _____  _____  ",
-            " |  __ \\|_   _||  __ \\ ",
-            " | |__) | | |  | |__) |",
-            " |  _  /  | |  |  ___/ ",
-            " | | \\ \\ _| |_ | |     ",
-            " |_|  \\_\\_____||_|     ",
-            "",
+        art = _load_text("rip.txt") or ["R.I.P."]
+        info = [
             "YOU HAVE PERISHED",
             "",
             f"Level: {p.level}   Depth: {p.max_depth}   Kills: {p.kills}   Gold: {p.gold}",
             "",
             "Press SPACE to try again, Q to quit",
         ]
+        all_lines = art + info
+        art_w = max((len(l) for l in art), default=0)
+        sy = max(0, h // 2 - len(all_lines) // 2)
 
-        sy = max(0, h // 2 - len(lines) // 2)
-        for i, line in enumerate(lines):
+        # Draw art block-centered
+        ox = max(0, w // 2 - art_w // 2)
+        for i, line in enumerate(art):
+            if sy + i < h:
+                try:
+                    self.scr.addstr(sy + i, ox, line,
+                                    curses.color_pair(C_DANGER) | curses.A_BOLD)
+                except curses.error:
+                    pass
+
+        # Draw info lines individually centered
+        for i, line in enumerate(info):
+            row = sy + len(art) + i
             x = max(0, w // 2 - len(line) // 2)
-            row = sy + i
             if row < h:
-                color = C_DANGER if i < 6 else C_UI
                 try:
                     self.scr.addstr(row, x, line,
-                                    curses.color_pair(color) | curses.A_BOLD)
+                                    curses.color_pair(C_UI) | curses.A_BOLD)
                 except curses.error:
                     pass
 
@@ -889,14 +896,8 @@ class Game:
         h, w = self.scr.getmaxyx()
         p = self.player
 
-        lines = [
-            " __     _____ _____ _____ ___  ______   __",
-            " \\ \\   / /_ _/ ____|_   _/ _ \\|  _ \\ \\ / /",
-            "  \\ \\ / / | | |      | || | | | |_) \\ V / ",
-            "   \\ V /  | | |      | || | | |  _ < \\ /  ",
-            "    \\ /  _| | |____ _| || |_| | | \\ \\ |   ",
-            "     \\/  |___|_____|_____\\___/|_|  \\_\\|   ",
-            "",
+        art = _load_text("victory.txt") or ["VICTORY!"]
+        info = [
             "THE DRAGON IS SLAIN!",
             "You have conquered Cosmo's Dungeon!",
             "",
@@ -906,16 +907,28 @@ class Game:
             "",
             "Press SPACE to play again, Q to quit",
         ]
+        all_lines = art + info
+        art_w = max((len(l) for l in art), default=0)
+        sy = max(0, h // 2 - len(all_lines) // 2)
 
-        sy = max(0, h // 2 - len(lines) // 2)
-        for i, line in enumerate(lines):
+        # Draw art block-centered
+        ox = max(0, w // 2 - art_w // 2)
+        for i, line in enumerate(art):
+            if sy + i < h:
+                try:
+                    self.scr.addstr(sy + i, ox, line,
+                                    curses.color_pair(C_GOLD) | curses.A_BOLD)
+                except curses.error:
+                    pass
+
+        # Draw info lines individually centered
+        for i, line in enumerate(info):
+            row = sy + len(art) + i
             x = max(0, w // 2 - len(line) // 2)
-            row = sy + i
             if row < h:
-                color = C_GOLD if i < 6 else C_UI
                 try:
                     self.scr.addstr(row, x, line,
-                                    curses.color_pair(color) | curses.A_BOLD)
+                                    curses.color_pair(C_UI) | curses.A_BOLD)
                 except curses.error:
                     pass
 
