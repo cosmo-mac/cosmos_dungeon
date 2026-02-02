@@ -210,6 +210,21 @@ class DungeonLevel:
                                xp=md["xp"])
                     self.monsters.append(m)
 
+        # Guarantee a dragon on depth 8
+        if self.depth >= 8 and not any(m.name == "dragon" for m in self.monsters):
+            lr = self.rooms[-1]
+            dx = lr[0] + lr[2] // 2
+            dy = lr[1] + lr[3] // 2
+            md = MONSTER_DEFS[-1]
+            hp_scale = 1 + (self.depth - 1) * 0.15
+            atk_scale = 1 + (self.depth - 1) * 0.1
+            dragon = Entity(dx, dy, md["ch"], md["name"], md["color"],
+                            hp=int(md["hp"] * hp_scale),
+                            max_hp=int(md["hp"] * hp_scale),
+                            atk=int(md["atk"] * atk_scale),
+                            xp=md["xp"])
+            self.monsters.append(dragon)
+
         # Place items
         for room in self.rooms:
             if random.random() < 0.5:
