@@ -183,12 +183,13 @@ class DungeonLevel:
                     self._connect(self.rooms[-1], room)
                 self.rooms.append(room)
 
-        # Place stairs in last room
-        lr = self.rooms[-1]
-        sx = lr[0] + lr[2] // 2
-        sy = lr[1] + lr[3] // 2
-        self.tiles[sy][sx] = STAIRS
-        self.stairs_pos = (sx, sy)
+        # Place stairs in last room (no stairs on depth 8 — it's the final floor)
+        if self.depth < 8:
+            lr = self.rooms[-1]
+            sx = lr[0] + lr[2] // 2
+            sy = lr[1] + lr[3] // 2
+            self.tiles[sy][sx] = STAIRS
+            self.stairs_pos = (sx, sy)
 
         # Place monsters
         for room in self.rooms[1:]:
@@ -659,47 +660,57 @@ class Game:
 
     # ── Inventory ────────────────────────────────────────────────────────────
     def _inventory_screen(self):
-        self.scr.erase()
-        h, w = self.scr.getmaxyx()
         p = self.player
+        cursor = 0
+        while True:
+            self.scr.erase()
+            h, w = self.scr.getmaxyx()
 
-        try:
-            self.scr.addstr(1, 2, "=== INVENTORY ===",
-                            curses.color_pair(C_UI) | curses.A_BOLD)
-        except curses.error:
-            pass
-
-        if not p.inventory:
             try:
-                self.scr.addstr(3, 4, "Your pack is empty.",
+                self.scr.addstr(1, 2, "=== INVENTORY ===",
+                                curses.color_pair(C_UI) | curses.A_BOLD)
+            except curses.error:
+                pass
+
+            if not p.inventory:
+                try:
+                    self.scr.addstr(3, 4, "Your pack is empty.",
+                                    curses.color_pair(C_UI))
+                except curses.error:
+                    pass
+            else:
+                for i, item in enumerate(p.inventory):
+                    pointer = ">" if i == cursor else " "
+                    desc = _item_desc(item.kind, item.value) if hasattr(item, 'kind') else ""
+                    label = f"{pointer} {item.ch} {item.name}  {desc}" if desc else f"{pointer} {item.ch} {item.name}"
+                    color = C_PLAYER if i == cursor else C_UI
+                    attr = curses.A_BOLD if i == cursor else 0
+                    try:
+                        self.scr.addstr(3 + i, 4, label,
+                                        curses.color_pair(color) | attr)
+                    except curses.error:
+                        pass
+
+            try:
+                self.scr.addstr(h - 2, 2, "Up/Down to select, ENTER to use, ESC/i to close",
                                 curses.color_pair(C_UI))
             except curses.error:
                 pass
-        else:
-            for i, item in enumerate(p.inventory):
-                letter = chr(ord("a") + i)
-                try:
-                    self.scr.addstr(3 + i, 4, f"[{letter}] {item.ch} {item.name}",
-                                    curses.color_pair(item.color))
-                except curses.error:
-                    pass
 
-        try:
-            self.scr.addstr(h - 2, 2, "Press a letter to use, ESC/i to close",
-                            curses.color_pair(C_UI))
-        except curses.error:
-            pass
+            self.scr.refresh()
+            key = self.scr.getch()
 
-        self.scr.refresh()
-        key = self.scr.getch()
-
-        if key == 27 or key == ord("i"):
-            self.state = "play"
-        elif ord("a") <= key <= ord("z"):
-            idx = key - ord("a")
-            if idx < len(p.inventory):
-                self._use_item(idx)
+            if key == 27 or key == ord("i"):
                 self.state = "play"
+                return
+            elif key in (curses.KEY_UP, ord("k")) and p.inventory:
+                cursor = (cursor - 1) % len(p.inventory)
+            elif key in (curses.KEY_DOWN, ord("j")) and p.inventory:
+                cursor = (cursor + 1) % len(p.inventory)
+            elif key in (ord("\n"), curses.KEY_ENTER) and p.inventory:
+                self._use_item(cursor)
+                self.state = "play"
+                return
 
     def _use_item(self, idx):
         p = self.player
@@ -738,43 +749,63 @@ class Game:
 
     # ── Shop ─────────────────────────────────────────────────────────────────
     def _shop_screen(self):
-        self.scr.erase()
-        h, w = self.scr.getmaxyx()
         p = self.player
+        cursor = 0
+        while True:
+            self.scr.erase()
+            h, w = self.scr.getmaxyx()
 
-        try:
-            self.scr.addstr(1, 2, "=== MERCHANT'S SHOP ===",
-                            curses.color_pair(C_MERCHANT) | curses.A_BOLD)
-            self.scr.addstr(2, 2, f"Your gold: {p.gold}",
-                            curses.color_pair(C_GOLD) | curses.A_BOLD)
-        except curses.error:
-            pass
-
-        for i, entry in enumerate(self._shop_stock):
-            letter = chr(ord("a") + i)
-            desc = _item_desc(entry["kind"], entry["value"])
-            line = f"[{letter}] {entry['ch']} {entry['name']}  {desc}  - {entry['price']}g"
-            color = C_UI if p.gold >= entry["price"] else C_DANGER
             try:
-                self.scr.addstr(4 + i, 4, line, curses.color_pair(color))
+                self.scr.addstr(1, 2, "=== MERCHANT'S SHOP ===",
+                                curses.color_pair(C_MERCHANT) | curses.A_BOLD)
+                self.scr.addstr(2, 2, f"Your gold: {p.gold}",
+                                curses.color_pair(C_GOLD) | curses.A_BOLD)
             except curses.error:
                 pass
 
-        try:
-            self.scr.addstr(h - 2, 2, "Press a letter to buy, ESC to leave",
-                            curses.color_pair(C_UI))
-        except curses.error:
-            pass
+            if not self._shop_stock:
+                try:
+                    self.scr.addstr(4, 4, "Sold out!",
+                                    curses.color_pair(C_UI))
+                except curses.error:
+                    pass
+            else:
+                for i, entry in enumerate(self._shop_stock):
+                    pointer = ">" if i == cursor else " "
+                    desc = _item_desc(entry["kind"], entry["value"])
+                    line = f"{pointer} {entry['ch']} {entry['name']}  {desc}  - {entry['price']}g"
+                    affordable = p.gold >= entry["price"]
+                    if not affordable:
+                        color = C_DANGER
+                    elif i == cursor:
+                        color = C_PLAYER
+                    else:
+                        color = C_UI
+                    attr = curses.A_BOLD if i == cursor else 0
+                    try:
+                        self.scr.addstr(4 + i, 4, line,
+                                        curses.color_pair(color) | attr)
+                    except curses.error:
+                        pass
 
-        self.scr.refresh()
-        key = self.scr.getch()
+            try:
+                self.scr.addstr(h - 2, 2, "Up/Down to select, ENTER to buy, ESC to leave",
+                                curses.color_pair(C_UI))
+            except curses.error:
+                pass
 
-        if key == 27:
-            self.state = "play"
-        elif ord("a") <= key <= ord("z"):
-            idx = key - ord("a")
-            if idx < len(self._shop_stock):
-                entry = self._shop_stock[idx]
+            self.scr.refresh()
+            key = self.scr.getch()
+
+            if key == 27:
+                self.state = "play"
+                return
+            elif key in (curses.KEY_UP, ord("k")) and self._shop_stock:
+                cursor = (cursor - 1) % len(self._shop_stock)
+            elif key in (curses.KEY_DOWN, ord("j")) and self._shop_stock:
+                cursor = (cursor + 1) % len(self._shop_stock)
+            elif key in (ord("\n"), curses.KEY_ENTER) and self._shop_stock:
+                entry = self._shop_stock[cursor]
                 price = entry["price"]
                 if p.gold >= price:
                     p.gold -= price
@@ -791,7 +822,9 @@ class Game:
                                       kind=entry["kind"], value=entry["value"])
                         p.inventory.append(item)
                         self.msg(f"Bought {entry['name']}.")
-                    self._shop_stock.pop(idx)
+                    self._shop_stock.pop(cursor)
+                    if cursor >= len(self._shop_stock) and self._shop_stock:
+                        cursor = len(self._shop_stock) - 1
                 else:
                     self.msg("You can't afford that!")
 
